@@ -33,7 +33,8 @@ from llm.llm_client import LLMClient
 from retriever.embedder import NVIDIAEmbedders, HuggingFaceEmbeders
 from retriever.vector import MilvusVectorClient, QdrantClient
 from retriever.retriever import Retriever
-from utils.feedback import feedback_kwargs
+from utils.feedback import feedback_kwargs, submit_feedback
+from search_agent.chat_support import *
 
 from langchain_nvidia_ai_endpoints import ChatNVIDIA
 from langchain_core.messages import HumanMessage
@@ -91,6 +92,9 @@ if "queried" not in st.session_state:
 
 if "memory" not in st.session_state:
     st.session_state.memory = init_memory(llm_client.llm, st.session_state.config['summary_prompt'])
+
+if "feedback_0" not in st.session_state:
+    st.session_state.feedback_0 = None
 memory = st.session_state.memory
 
 
@@ -159,11 +163,12 @@ if "query_embedder" not in st.session_state:
 # init the retriever
 if "retriever" not in st.session_state:
     st.session_state.retriever = Retriever(embedder=st.session_state.query_embedder , vector_client=st.session_state.vector_client)
-retriever = st.session_state.retriever
 
+retriever = st.session_state.retriever
 messages = st.session_state.messages
 
 for n, msg in enumerate(messages):
+    st.write(f"Length of msg:{len(messages)}")
     st.chat_message(msg["role"]).write(msg["content"])
     if msg["role"] == "assistant" and n > 1:
         with st.chat_message("assistant"):
@@ -211,16 +216,35 @@ for n, msg in enumerate(messages):
                             st.write(source["doc_content"])
                     else:
                         st.write(source["doc_content"])
+        ########################################### FEEDBACK AND SEARCH AGENT WORKFLOW ###########################################
+        if( n == len(messages)-1):
+            feedback_key = f"feedback_{int(n)}"
 
-        feedback_key = f"feedback_{int(n/2)}"
+            if feedback_key not in st.session_state:
+                st.session_state[feedback_key] = None
+            col1, col2 = st.columns(2)
+            with col1:
+                st.write("**Please provide feedback by clicking one of these icons:**")
+            with col2:
+                interact_rating = streamlit_feedback(**feedback_kwargs, args=[messages[-2]["content"].strip(), messages[-1]["content"].strip()], key=feedback_key+'_0', align="flex-start")
+                print(f"\n\n{interact_rating}\n\n")
 
-        if feedback_key not in st.session_state:
-            st.session_state[feedback_key] = None
-        col1, col2 = st.columns(2)
-        with col1:
-            st.write("**Please provide feedback by clicking one of these icons:**")
-        with col2:
-            streamlit_feedback(**feedback_kwargs, args=[messages[-2]["content"].strip(), messages[-1]["content"].strip()], key=feedback_key, align="flex-start")
+            if (interact_rating is not None) & (sel_search_opt=="Yes"):
+                if interact_rating['score'] == "👎":    
+                    message_placeholder = st.empty()
+                    st.write("Since, you didn't like the answer,I found this on the internet for a better context:")
+                    st_cb = StreamlitCallbackHandler(st.container(), expand_new_thoughts=False)
+                    cfg = RunnableConfig()
+                    cfg["callbacks"] = [st_cb]
+                    executor = search_response(memory)
+                    
+                    response = executor.invoke(messages[-2]['content'], cfg)
+                    
+                    search_result = response["output"]
+                    st.write(search_result)
+
+                    messages[-1]['content'] = f"The chatbot response is \n [Chat Bot Response]:{messages[-1]['content']}" + f"\nSince the retreived answer wasn't as per user expectations, an internet search was performed to create the following better answer:\n{search_result}"
+        ########################################################################################################################
 
 # Check if the topic has changed
 if st.session_state['prompt_value'] == None:
@@ -260,7 +284,7 @@ if len(prompt) > 0 and submitted == True:
     with st.spinner("Obtaining references from documents..."):
         BASE_DIR = os.path.abspath("vectorstore")
         CORE_DIR = os.path.join(BASE_DIR, config["core_docs_directory_name"])
-        context, sources = retriever.get_relevant_docs(transformed_query["text"])
+        context, sources =  retriever.get_relevant_docs(transformed_query["text"]) #"A",["B"]
 
         ############################# RERANKING MODULE #############################
         st.session_state.sources = sources
@@ -284,28 +308,34 @@ if len(prompt) > 0 and submitted == True:
             updated_context += f"[[DOCUMENT {idx}]]\n\n" + sources[retreived_keys[m]]['doc_content'] + "\n\n"
             updated_sources.update({retreived_keys[m]:sources[retreived_keys[m]]})
         ############################################################################################################
-        
+        # updated_context=context
+        # updated_sources=sources
         st.session_state.sources = updated_sources
         augmented_prompt = "Relevant documents:" + updated_context + "\n\n[[QUESTION]]\n\n" + transformed_query["text"] #+ "\n" + config["footer"]
         system_prompt = config["header"]
     # Display assistant response in chat message container
     with st.chat_message("assistant"):
         response = llm_client.chat_with_prompt(system_prompt, augmented_prompt)
+        # response="this is party!"
         message_placeholder = st.empty()
         full_response = ""
         for chunk in response:
             full_response += chunk
             message_placeholder.markdown(full_response + "▌")
         message_placeholder.markdown(full_response)
+        
 
     add_history_to_memory(memory, transformed_query["text"], full_response)
-    with st.spinner("Running fact checking/guardrails..."):
-        full_response += "\n\nFact Check result: " 
-        res = fact_check(context, transformed_query["text"], full_response)
-        for response in res:
-            full_response += response
-            message_placeholder.markdown(full_response + "▌")
-        message_placeholder.markdown(full_response)
+    
+    ########################### GUARDRAILS SECTION ###########################
+    # with st.spinner("Running fact checking/guardrails..."):
+    #     full_response += "\n\nFact Check result: " 
+    #     res = fact_check(context, transformed_query["text"], full_response)
+    #     for response in res:
+    #         full_response += response
+    #         message_placeholder.markdown(full_response + "▌")
+    #     message_placeholder.markdown(full_response)
+    ##########################################################################
     
     with st.chat_message("assistant"):
         messages.append(
@@ -313,6 +343,7 @@ if len(prompt) > 0 and submitted == True:
         )
         st.write(full_response)
         st.rerun()
+
 elif len(messages) > 1:
     summary_placeholder = st.empty()
     summary_button = summary_placeholder.button("Click to see summary")
@@ -320,3 +351,6 @@ elif len(messages) > 1:
         with st.chat_message("assistant"):
             summary_placeholder.empty()
             st.markdown(get_summary(memory))
+
+
+st.write(st.session_state)
