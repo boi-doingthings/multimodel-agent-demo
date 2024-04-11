@@ -123,10 +123,9 @@ with st.sidebar:
     sel_search_opt = st.sidebar.radio("Do you want search functionality:", search_options)
 
     st.header("Image Input Query")
-
     # with st.form("my-form", clear_on_submit=True):
     uploaded_file = st.file_uploader("Upload an image (JPG/JPEG/PNG) along with a text input:", accept_multiple_files = False)
-    #    submitted = st.form_submit_button("UPLOAD!")
+        # submitted = st.form_submit_button("UPLOAD!")
     
     if uploaded_file and st.session_state.image_query == "":
         st.success("Image loaded for multimodal RAG Q&A.")
@@ -326,7 +325,7 @@ if len(prompt) > 0 and submitted == True:
         
 
     add_history_to_memory(memory, transformed_query["text"], full_response)
-    
+
     ########################### GUARDRAILS SECTION ###########################
     # with st.spinner("Running fact checking/guardrails..."):
     #     full_response += "\n\nFact Check result: " 
