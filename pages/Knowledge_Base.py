@@ -40,13 +40,12 @@ with st.sidebar:
         defaultidx = 0
     # config_names = [f.split('.')[0] for f in os.listdir(os.getcwd()+'/bot_config/') if f.endswith('.config')]
     cfg_name = st.selectbox("Select a configuration/type of bot.", (config_names), index=defaultidx)
-    st.write(cfg_name)
     st.session_state.config = get_config(os.path.join("bot_config", cfg_name+".config"))
     config = get_config(os.path.join("bot_config", cfg_name+".config"))
     if st.session_state.config != prev_cfg:
         st.experimental_rerun()
 
-st.sidebar.success("Select an experience above.")
+# st.sidebar.success("Select an experience above.")
 
 # init the embedder
 if "document_embedder" not in st.session_state:
