@@ -75,7 +75,7 @@ if cfg_arg and "config" not in st.session_state:
 
 if "config" not in st.session_state:
     st.session_state.config = load_config("multimodal")
-    print(st.session_state.config)
+    # print(st.session_state.config)
 
 if "messages" not in st.session_state:
     st.session_state.messages = [
@@ -97,6 +97,9 @@ if "feedback_0" not in st.session_state:
     st.session_state.feedback_0 = None
 memory = st.session_state.memory
 
+def msg_formatter(msg):
+    msg_secs = msg.split("<>")
+    return msg_secs[-1]
 
 with st.sidebar:
     prev_cfg = st.session_state.config
@@ -152,7 +155,11 @@ st.markdown(config["instructions"])
 # init the vector client
 if "vector_client" not in st.session_state or st.session_state.vector_client.collection_name != config["core_docs_directory_name"]:
     try:
-        st.session_state.vector_client = MilvusVectorClient(hostname="localhost", port="19530", collection_name=config["core_docs_directory_name"])
+        if os.environ.get('STLIT_IN_DOCKER'):
+            from utils.container_ip import get_container_ip
+            st.session_state.vector_client =  MilvusVectorClient(hostname=get_container_ip("milvus-standalone"), port="19530", collection_name=config["core_docs_directory_name"])
+        else:
+            st.session_state.vector_client =  MilvusVectorClient(hostname="localhost", port="19530", collection_name=config["core_docs_directory_name"])
     except Exception as e:
         st.write(f"Failed to connect to Milvus vector DB, exception: {e}. Please follow steps to initialize the vector DB, or upload documents to the knowledge base and add them to the vector DB.")
         st.stop()
@@ -167,8 +174,7 @@ retriever = st.session_state.retriever
 messages = st.session_state.messages
 
 for n, msg in enumerate(messages):
-    st.write(f"Length of msg:{len(messages)}")
-    st.chat_message(msg["role"]).write(msg["content"])
+    st.chat_message(msg["role"]).write(msg_formatter(msg["content"]))
     if msg["role"] == "assistant" and n > 1:
         with st.chat_message("assistant"):
             ctr = 0
@@ -242,7 +248,7 @@ for n, msg in enumerate(messages):
                     search_result = response["output"]
                     st.write(search_result)
 
-                    messages[-1]['content'] = f"The chatbot response is \n [Chat Bot Response]:{messages[-1]['content']}" + f"\nSince the retreived answer wasn't as per user expectations, an internet search was performed to create the following better answer:\n{search_result}"
+                    messages[-1]['content'] = f"The chatbot response is \n [Chat Bot Response]:<> {messages[-1]['content']}" + f"\nSince the retreived answer wasn't as per user expectations, an internet search was performed to create the following better answer:\n{search_result}"
         ########################################################################################################################
 
 # Check if the topic has changed
@@ -352,4 +358,4 @@ elif len(messages) > 1:
             st.markdown(get_summary(memory))
 
 
-st.write(st.session_state)
+# st.write(st.session_state)

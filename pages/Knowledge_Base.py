@@ -54,7 +54,12 @@ if "document_embedder" not in st.session_state:
 document_embedder = st.session_state.document_embedder
 # init the vector client
 if "vector_client" not in st.session_state or st.session_state.vector_client.collection_name != config["core_docs_directory_name"]:
-    st.session_state.vector_client =  MilvusVectorClient(hostname="localhost", port="19530", collection_name=config["core_docs_directory_name"])
+    if os.environ.get('STLIT_IN_DOCKER'):
+        from utils.container_ip import get_container_ip
+        st.session_state.vector_client =  MilvusVectorClient(hostname=get_container_ip("milvus-standalone"), port="19530", collection_name=config["core_docs_directory_name"])
+    else:
+        st.session_state.vector_client =  MilvusVectorClient(hostname="localhost", port="19530", collection_name=config["core_docs_directory_name"])
+    
 vector_client = st.session_state.vector_client
 
 BASE_DIR = os.path.abspath("vectorstore")
