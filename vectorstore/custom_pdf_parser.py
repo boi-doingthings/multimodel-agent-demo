@@ -34,8 +34,12 @@ def is_graph(image_path):
     # Implement graph detection algorithm here
     neva = LLMClient("neva_22b")
     b64_string = get_b64_image(image_path)
-    res = neva.multimodal_invoke(b64_string, creativity = 0, quality = 9, complexity = 0, verbosity = 9).content
-    print(res)
+    try:
+        res = neva.multimodal_invoke(b64_string, creativity = 0, quality = 9, complexity = 0, verbosity = 9).content
+        print(res)
+    except:
+        res = f"Image {image_path}: exceedded the API standards.."
+        print(res)
     if "graph" in res or "plot" in res or "chart" in res:
         return True
     else:
